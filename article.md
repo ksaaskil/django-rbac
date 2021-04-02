@@ -12,7 +12,7 @@ In this short series of articles, I'd like to share how to implement granular, r
 
 We'll be using vanilla Django without extra frameworks or dependencies throughout. This doesn't mean you shouldn't use publicly available packages, but sticking to pure Django is a good choice when you want to learn things and when you need the most flexibility. Remember, though, that user authentication is one place where you don't want to mess things up: the more code you write, the better test suite you'll need!
 
-In this part one, we'll setup a Django project and app for our REST API. We'll add a custom user model and simple tests.
+In this part one, we'll setup a Django project and app for our REST API. We'll add a custom user model and simple tests. You can find the accompanying code [in this repository](https://github.com/ksaaskil/django-rbac).
 
 ## Creating the project and app
 
@@ -60,6 +60,8 @@ Our views and models will live under `core` app. Let's create such an app and mo
 $ python manage.py startapp core
 $ mv core rbac/
 ```
+
+I move the app under the project to keep everything in one place. I don't expect to be adding any extra apps as multiple apps can [lead to problems](https://medium.com/@DoorDash/tips-for-building-high-quality-django-apps-at-scale-a5a25917b2b5) further down the road.
 
 Let us modify `apps.py` in the app to use name `rbac.core` instead of `core`:
 
@@ -192,9 +194,11 @@ $ curl http://localhost:8000
 Hello, world. You're at the core index.
 ```
 
-## Creating services and tests
+## Creating service layer
 
-We create a service layer to add decoupling between views and models. Let's create services for creating users and finding users:
+We create a service layer to add decoupling between views and models as suggested [in this article](https://medium.com/@DoorDash/tips-for-building-high-quality-django-apps-at-scale-a5a25917b2b5). Such a decoupling layer helps to keep models lean and all business logic in one place. Services are also very useful for testing, as we can create resources with services in similar fashion as real users would do.
+
+Let's create services for creating users and finding users:
 
 ```python
 # rbac/core/services.py
@@ -211,6 +215,8 @@ def find_user_by_email(email: str) -> typing.Optional[User]:
     except User.DoesNotExist:
         return None
 ```
+
+## Adding tests
 
 Now we can do the **very important** thing we know every developer must do and add tests for our project. Let's first install [`pytest`](https://docs.pytest.org/en/stable/) and [`pytest-django`](https://pypi.org/project/pytest-django/):
 
@@ -254,15 +260,8 @@ Now you can run the test and see it pass:
 
 ```bash
 $ pytest
-============================================================================= test session starts ==============================================================================
-platform darwin -- Python 3.8.1, pytest-6.2.2, py-1.10.0, pluggy-0.13.1
-django: settings: rbac.settings (from ini)
-rootdir: /Users/ksaaskil/git/django-rbac, configfile: pytest.ini
-plugins: django-4.1.0
-collected 1 item
-
-tests/test_services.py .                                                                                                                                                 [100%]
-
-============================================================================== 1 passed in 0.35s ===============================================================================
 ```
 
+## Conclusion
+
+That concludes Part 1. In the next parts, we'll be adding views and tests for logging in users, preventing unwanted users from seeing resources, and finally adding granular role-based access control. See you later!
