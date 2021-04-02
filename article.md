@@ -1,9 +1,22 @@
+---
+title: Creating Django REST API with custom user model and tests
+published: true
+description: Prepare for change by building for flexibility
+tags: python,django
+series: Granular role-based access control in Django
+date: 2021-04-02
+canonical_url: https://kimmosaaskilahti.fi/blog/2021-04-02-django-custom-user/
+---
 
+In this short series of articles, I'd like to share how to implement granular, resource-level role-based access control in Django. We'll build a REST API that returns 401s (Unauthorized) for unauthenticated users, 404s for authenticated users not authorized to view given resources, and 403s (Forbidden) for users authorized to view resources but forbidden to perform given actions.
 
+We'll be using vanilla Django without extra frameworks or dependencies throughout. This doesn't mean you shouldn't use publicly available packages, but sticking to pure Django is a good choice when you want to learn things and when you need the most flexibility. Remember, though, that user authentication is one place where you don't want to mess things up: the more code you write, the better test suite you'll need!
 
-## Setup
+In this part one, we'll setup a Django project and app for our REST API. We'll add a custom user model and simple tests.
 
-To start, let's create a new folder and a virtual environment. I use `pyenv virtualenv`:
+## Creating the project and app
+
+To start, let's create a new folder and a virtual environment. I use [`pyenv virtualenv`](https://github.com/pyenv/pyenv-virtualenv) to create virtual environments:
 
 ```bash
 $ mkdir django-rbac && cd django-rbac
@@ -56,7 +69,7 @@ class CoreConfig(AppConfig):
     name = 'rbac.core'
 ```
 
-Now let's set everything up to make our first test request to endpoint `GET /`. Here's a simple view for the app:
+Now let's set everything up for our first endpoint `GET /`. Here's a simple view for the app:
 
 ```python
 # rbac/core/views.py
@@ -67,7 +80,7 @@ def index(request):
     return HttpResponse("Hello, world. You're at the core index.")
 ```
 
-Set up a URL that points to the view:
+Set up a URL to point to the view:
 
 ```python
 # rbac/core/urls.py
@@ -91,9 +104,11 @@ urlpatterns = [
 ]
 ```
 
+The project and app are now setup. Before moving further, let's create a custom model for users.
+
 ## Custom user model
 
-It's always a good idea in Django to create a custom model for users. It's hard to change the user model later and it isn't that much work to roll our own model.
+It's always a good idea in Django to create a custom model for users. It's hard to change the user model later and it isn't that much work to roll our own model. A custom model gives the most flexibility later on.
 
 Let's first explicitly define our authentication backend and the `User` model we want to use in `settings.py`:
 
@@ -103,7 +118,7 @@ AUTHENTICATION_BACKENDS = ['django.contrib.auth.backends.ModelBackend']
 AUTH_USER_MODEL = 'core.User'
 ```
 
-Now we create our custom user model in `models.py`:
+Now we create our custom user model in `models.py` by defining `User` and `UserManager`:
 
 ```python
 # rbac/core/models.py
@@ -117,7 +132,7 @@ from django.contrib.auth.models import (
 class UserManager(BaseUserManager):
     def create_user(self, email, name, password=None):
         """
-        Creates and saves a User with the given email, name and password.
+        Create and save a user with the given email, name and password.
         """
         if not email:
             raise ValueError('Users must have an email address')
@@ -152,10 +167,102 @@ class User(AbstractBaseUser):
 
 ```
 
-I will not explain this in detail as you can find a full example [here](https://docs.djangoproject.com/en/3.1/topics/auth/customizing/#a-full-example) in Django documentation. It suffices to say that our `User` has fields `email` and `name`. The field `email` must be unique and we use that as our user name. We use a UUID as primary key in all the models we create. We also create our own `UserManager` that we can use for creating new users as `User.objects.create_user(email=email, name=name, password=password)`.
+I will not try to explain this in detail as you can find a full example [here](https://docs.djangoproject.com/en/3.1/topics/auth/customizing/#a-full-example) in Django documentation. Our `User` has fields `email` and `name`. The field `email` must be unique and we use that as our user name. We use a UUID as primary key in all the models we create. We also create our own `UserManager` that we can use for creating new users as `User.objects.create_user(email=email, name=name, password=password)`.
 
-Now we can create our first migration to create the user model in database:
+Now let's create our first migration to create the user model in database:
 
 ```bash
 $ python manage.py makemigrations
 ```
+
+At this point, you could configure your database. We'll be using `sqlite3` in this article for simplicity. See [this article](https://dev.to/ksaaskil/setting-up-django-app-with-postgres-database-and-health-check-2cpd) how to configure Django to use Postgres database and how to setup a simple health-check endpoint.
+
+## Try it out
+
+Let's run our server:
+
+```bash
+$ python manage.py runserver
+```
+
+Open another terminal tab and make a request to your server at `http://localhost:8000`:
+
+```bash
+$ curl http://localhost:8000
+Hello, world. You're at the core index.
+```
+
+## Creating services and tests
+
+We create a service layer to add decoupling between views and models. Let's create services for creating users and finding users:
+
+```python
+# rbac/core/services.py
+import typing
+
+from rbac.core.models import User
+
+def create_user(email: str, name: str, password: str) -> User:
+    return User.objects.create_user(email=email, name=name, password=password)
+
+def find_user_by_email(email: str) -> typing.Optional[User]:
+    try:
+        return User.objects.get(email=email)
+    except User.DoesNotExist:
+        return None
+```
+
+Now we can do the **very important** thing we know every developer must do and add tests for our project. Let's first install [`pytest`](https://docs.pytest.org/en/stable/) and [`pytest-django`](https://pypi.org/project/pytest-django/):
+
+```bash
+$ printf "pytest\npytest-django\n" > requirements-dev.txt
+$ pip install -r requirements-dev.txt
+```
+
+Configure `pytest.ini`:
+
+```ini
+# pytest.ini
+[pytest]
+DJANGO_SETTINGS_MODULE = rbac.settings
+```
+
+Let's create a simple test for creating a user:
+
+```python
+# tests/test_services.py
+import pytest
+
+from rbac.core.services import create_user, find_user_by_email
+
+@pytest.mark.django_db
+def test_create_user():
+    email = "test@example.com"
+    name = "Jane Doe"
+    password = "some-clever-password"
+
+    user = create_user(email=email, name=name, password=password)
+
+    assert user.email == email
+
+    found_user = find_user_by_email(email=email)
+
+    assert found_user == user
+```
+
+Now you can run the test and see it pass:
+
+```bash
+$ pytest
+============================================================================= test session starts ==============================================================================
+platform darwin -- Python 3.8.1, pytest-6.2.2, py-1.10.0, pluggy-0.13.1
+django: settings: rbac.settings (from ini)
+rootdir: /Users/ksaaskil/git/django-rbac, configfile: pytest.ini
+plugins: django-4.1.0
+collected 1 item
+
+tests/test_services.py .                                                                                                                                                 [100%]
+
+============================================================================== 1 passed in 0.35s ===============================================================================
+```
+
