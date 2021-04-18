@@ -306,5 +306,41 @@ class ModelBackend(BaseBackend):
     ...
 ```
 
-Every authentication backend should have methods `authenticate()` and `get_user()`. The `authenticate()` method should check the credentials it gets and return a user object that matches those credentials if the credentials are valid. If they’re not valid, it should return `None`.
+The `ModelBackend` fetches the appropriate user from the backend using either the given `username` or the `USERNAME_FIELD` given defined in user model. It then checks the password and also checks if the user can authenticate, which means checking if the user has `is_active` set to `True`.
 
+The `ModelBackend` would suit our purposes perfectly, but because it also contains a default permission system, we can roll out a much simpler authentication backend. Every authentication backend should have methods `authenticate()` and `get_user()`. The `authenticate()` method should check the credentials it gets and return a user object that matches those credentials if the credentials are valid. If they’re not valid, it should return `None`. Here's a simple implementation:
+
+```python
+# rbac/core/auth.py
+from django.contrib.auth.backends import BaseBackend
+
+from rbac.core.models import User
+from rbac.core import services
+
+
+class CheckPasswordBackend(BaseBackend):
+    def authenticate(
+        self, request=None, email=None, password=None
+    ) -> typing.Optional[User]:
+        try:
+            user = services.find_user_by_email(email=email)
+        except Http404:
+            return None
+
+        return user if user.check_password(password) else None
+
+    def get_user(self, user_id) -> typing.Optional[User]:
+        try:
+            return User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return None
+```
+
+We use `services.find_user_by_email` method created in the previous post for fetching the user by email. If the password matches, we return the corresponding user. And that's it! Let's set Django to use this backend for authentication:
+
+```python
+# rbac/settings.py
+AUTHENTICATION_BACKENDS = ["rbac.core.auth.CheckPasswordBackend"]
+```
+
+Now, whenever we call `authenticate` from `django.contrib.auth`, we're essentially calling `authenticate()` from `CheckPasswordBackend`.
