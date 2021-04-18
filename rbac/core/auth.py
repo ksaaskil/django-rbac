@@ -14,9 +14,9 @@ class CheckPasswordBackend:
     def authenticate(
         self, request=None, email=None, password=None
     ) -> typing.Optional[User]:
-        try:
-            user = services.find_user_by_email(email=email)
-        except Http404:
+        user = services.find_user_by_email(email=email)
+
+        if not user:
             return None
 
         return user if user.check_password(password) else None
