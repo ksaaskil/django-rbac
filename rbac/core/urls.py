@@ -1,5 +1,4 @@
-from django.urls import path
-from django.conf.urls import include, url, re_path
+from django.conf.urls import include, re_path
 from rbac.core import views
 
 urlpatterns = [
