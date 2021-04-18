@@ -1,3 +1,5 @@
 -r requirements.txt
+black==20.8b1
 pytest
 pytest-django
+pytest-watch

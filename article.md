@@ -265,3 +265,46 @@ $ pytest
 ## Conclusion
 
 That concludes Part 1. In the next parts, we'll be adding views and tests for logging in users, preventing unwanted users from seeing resources, and finally adding granular role-based access control. See you later!
+
+
+https://docs.djangoproject.com/en/3.2/topics/auth/default/#django.contrib.auth.authenticate
+
+# Part 2
+
+---
+title: Custom user authentication and tests in Django
+published: true
+description: Prepare for change by building for flexibility
+tags: python,django
+series: Granular role-based access control in Django
+date: 2021-04-018
+canonical_url: https://kimmosaaskilahti.fi/blog/2021-04-18-django-custom-authentication/
+---
+
+In the previous part, we created a custom user model in Django. In this part, I'd like to show how to roll custom authentication. Neither of this are required for the granular role-based access control, but I'd like this series to be a relatively complete look into how authentication and authorization work in Django.
+
+Authentication is done to figure out who the user claims to be and to verify the claim. In Django, the low-level approach to verifying the user identity is to call [`authenticate`](https://docs.djangoproject.com/en/3.2/topics/auth/default/#django.contrib.auth.authenticate) from `django.contrib.auth.authenticate`. This function checks the user identity against each [authentication backend](https://docs.djangoproject.com/en/3.2/topics/auth/customizing/#authentication-backends) configured in [`AUTHENTICATION_BACKENDS`](https://docs.djangoproject.com/en/3.2/ref/settings/#std:setting-AUTHENTICATION_BACKENDS) variable of `settings.py`.
+
+By default, Django uses [`ModelBackend`](https://docs.djangoproject.com/en/3.2/ref/contrib/auth/#django.contrib.auth.backends.ModelBackend) as the only authentication backend. It's instructive to look into the implementation in [GitHub](https://github.com/django/django/blob/main/django/contrib/auth/backends.py#L31):
+
+```python
+class ModelBackend(BaseBackend):
+    def authenticate(self, request, username=None, password=None, **kwargs):
+        if username is None:
+            username = kwargs.get(UserModel.USERNAME_FIELD)
+        if username is None or password is None:
+            return
+        try:
+            user = UserModel._default_manager.get_by_natural_key(username)
+        except UserModel.DoesNotExist:
+            # Run the default password hasher once to reduce the timing
+            # difference between an existing and a nonexistent user (#20760).
+            UserModel().set_password(password)
+        else:
+            if user.check_password(password) and self.user_can_authenticate(user):
+                return user
+    ...
+```
+
+Every authentication backend should have methods `authenticate()` and `get_user()`. The `authenticate()` method should check the credentials it gets and return a user object that matches those credentials if the credentials are valid. If they’re not valid, it should return `None`.
+

@@ -2,6 +2,7 @@ import pytest
 
 from rbac.core.services import create_user, find_user_by_email
 
+
 @pytest.mark.django_db
 def test_create_user():
     email = "test@example.com"
